@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+python-dotenv
+pdfplumber
+camelot-py[cv]
+supabase
+google-generativeai
+rank-bm25
+pydantic
+sqlalchemy
+alembic
+pgvector
+psycopg2-binary
