@@ -4,7 +4,7 @@ python-dotenv
 pdfplumber
 camelot-py[cv]
 supabase
-google-generativeai
+google-genai
 rank-bm25
 pydantic
 sqlalchemy
