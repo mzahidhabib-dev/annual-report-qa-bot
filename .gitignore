@@ -6,3 +6,6 @@ __pycache__/
 logs/
 sample_docs/
 temp_images/
+rules.md
+annual_report_qa_bot_roadmap.html
+product_blueprint.md
