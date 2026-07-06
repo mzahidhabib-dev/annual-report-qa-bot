@@ -4,55 +4,45 @@ import time
 from dotenv import load_dotenv
 from google import genai
 from src.db.database import SessionLocal
-from src.db.models import DocumentChunk, ExtractedTable
-from src.ingestion.text_extractor import extract_text_by_page
-from src.embeddings.chunker import chunk_text
-from src.embeddings.embedder import embed_and_save_chunks
+from src.db.models import ExtractedTable
 from src.ingestion.table_extractor import extract_tables_from_pdf
 from src.embeddings.table_summarizer import summarize_tables
 
 load_dotenv()
 
-def run_pipeline():
+def run_phase2():
     pdf_path = os.path.join("sample_docs", "Northbridge_Dynamics_2025_Annual_Report.pdf")
     document_id = str(uuid.uuid4())
+    
+    print(f"==========================================")
+    print(f"PHASE 2 - STEP 2.1: Extracting Tables")
+    print(f"==========================================")
+    tables = extract_tables_from_pdf(pdf_path)
+    print(f"[SUCCESS] Found {len(tables)} tables.\n")
+    
+    if not tables:
+        print("No tables to process. Exiting.")
+        return
+        
+    print(f"==========================================")
+    print(f"PHASE 2 - STEP 2.2: Summarizing Tables")
+    print(f"==========================================")
     api_key = os.environ.get("GEMINI_API_KEY")
     client = genai.Client(api_key=api_key)
     
-    print(f"==========================================")
-    print(f"PHASE 1: TEXT INGESTION")
-    print(f"==========================================")
-    print(f"Assigned Document ID: {document_id}\n")
+    # For testing purposes, only process the first 3 tables to save time
+    test_tables = tables[:3]
+    print(f"[INFO] To save time, this test will only summarize the first {len(test_tables)} tables.\n")
     
-    pages = extract_text_by_page(pdf_path)
-    print(f"[SUCCESS] Extracted {len(pages)} pages of text.")
+    summarized_tables = summarize_tables(test_tables, client)
     
-    chunks = chunk_text(pages, chunk_size=800, overlap=150)
-    print(f"[SUCCESS] Generated {len(chunks)} text chunks.")
-    
-    print(f"[INFO] Embedding {len(chunks)} text chunks. This will take ~{len(chunks) * 4} seconds...")
-    db_session = SessionLocal()
-    try:
-        saved_chunks = embed_and_save_chunks(chunks, document_id, db_session)
-        print(f"[SUCCESS] Saved {saved_chunks} text chunks to 'document_chunks'.")
-    except Exception as e:
-        print(f"[ERROR] Failed to save text chunks: {e}")
-        db_session.rollback()
-        db_session.close()
-        return
-
     print(f"\n==========================================")
-    print(f"PHASE 2: TABLE INGESTION")
+    print(f"PHASE 2 - STEP 2.3: Embedding & Saving to DB")
     print(f"==========================================")
     
-    tables = extract_tables_from_pdf(pdf_path)
-    print(f"[SUCCESS] Extracted {len(tables)} tables.")
+    from src.db.models import ExtractedTable, DocumentChunk
     
-    # We summarize all tables in the real pipeline
-    summarized_tables = summarize_tables(tables, client)
-    
-    print(f"[INFO] Embedding {len(summarized_tables)} table summaries. This will take ~{len(summarized_tables) * 4} seconds...")
-    
+    db_session = SessionLocal()
     try:
         saved_table_count = 0
         for i, table_dict in enumerate(summarized_tables, 1):
@@ -60,7 +50,7 @@ def run_pipeline():
             markdown_table = table_dict["markdown_table"]
             page_num = table_dict["page_number"]
             
-            # Save the raw table
+            # 1. Save the raw table data for reference
             db_table = ExtractedTable(
                 document_id=document_id,
                 table_summary=summary_text,
@@ -69,7 +59,7 @@ def run_pipeline():
             )
             db_session.add(db_table)
             
-            # Embed the summary
+            # 2. Embed the summary so it can be searched
             result = client.models.embed_content(
                 model="gemini-embedding-2",
                 contents=summary_text,
@@ -77,7 +67,7 @@ def run_pipeline():
             )
             embedding_vector = result.embeddings[0].values
             
-            # Add the summary to the chunk database
+            # 3. Add the summary to the chunk database so the AI can retrieve it
             db_chunk = DocumentChunk(
                 document_id=document_id,
                 content=summary_text,
@@ -86,23 +76,21 @@ def run_pipeline():
                 embedding=embedding_vector
             )
             db_session.add(db_chunk)
+            
             saved_table_count += 1
-            print(f"Embedded table {i}/{len(summarized_tables)}")
+            print(f"[SUCCESS] Embedded and staged table {i}/{len(summarized_tables)}")
             
             if i < len(summarized_tables):
                 time.sleep(4.0)
                 
         db_session.commit()
-        print(f"[SUCCESS] Saved and embedded {saved_table_count} tables!")
+        print(f"\n[SUCCESS] {saved_table_count} tables have been permanently saved and embedded!")
+        print("\n[INFO] You can view the raw tables in 'extracted_tables' and the searchable summaries in 'document_chunks'.")
     except Exception as e:
         print(f"[ERROR] Failed to save tables: {e}")
         db_session.rollback()
     finally:
         db_session.close()
-        
-    print(f"\n==========================================")
-    print(f"PIPELINE COMPLETE!")
-    print(f"==========================================")
 
 if __name__ == "__main__":
-    run_pipeline()
+    run_phase2()

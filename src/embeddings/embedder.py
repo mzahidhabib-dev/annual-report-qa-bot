@@ -27,9 +27,9 @@ def embed_and_save_chunks(chunks: list[dict], document_id: str, db_session: Sess
         try:
             # Generate embedding using the new official google-genai SDK
             result = client.models.embed_content(
-                model="text-embedding-004",
+                model="gemini-embedding-2",
                 contents=text,
-                config={"task_type": "RETRIEVAL_DOCUMENT"}
+                config={"task_type": "RETRIEVAL_DOCUMENT", "output_dimensionality": 768}
             )
             embedding_vector = result.embeddings[0].values
             
