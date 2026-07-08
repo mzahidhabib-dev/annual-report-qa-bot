@@ -1,9 +1,9 @@
 import pdfplumber
 
-def extract_tables_from_pdf(pdf_path: str) -> list[dict]:
+def extract_all_tables(pdf_path: str) -> list[dict]:
     """
-    Extracts tables from a PDF using pdfplumber and formats them as Markdown.
-    Returns a list of dicts: {"page_number": int, "markdown_table": str}
+    Extracts tables from a PDF using pdfplumber.
+    Returns a list of dicts: {"page_number": int, "rows": list[list[str]]}
     """
     tables_data = []
     
@@ -21,25 +21,13 @@ def extract_tables_from_pdf(pdf_path: str) -> list[dict]:
                     cleaned_row = [" ".join(str(cell).replace('\n', ' ').split()) if cell else "" for cell in row]
                     cleaned_table.append(cleaned_row)
                     
-                # Format as Markdown
-                if not cleaned_table or not cleaned_table[0]:
+                if not cleaned_table or len(cleaned_table) < 2 or not cleaned_table[0]:
                     continue
-                    
-                num_cols = len(cleaned_table[0])
-                
-                # Header row
-                markdown_str = "|" + "|".join(cleaned_table[0]) + "|\n"
-                
-                # Separator row
-                markdown_str += "|" + "|".join(["---"] * num_cols) + "|\n"
-                
-                # Data rows
-                for row in cleaned_table[1:]:
-                    markdown_str += "|" + "|".join(row) + "|\n"
                     
                 tables_data.append({
                     "page_number": page_num,
-                    "markdown_table": markdown_str
+                    "rows": cleaned_table,
+                    "method": "pdfplumber"
                 })
                 
     return tables_data

@@ -49,12 +49,29 @@ class ExtractedImage(Base):
     image_description = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+class Document(Base):
+    __tablename__ = 'documents'
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    filename = Column(Text, nullable=False)
+    status = Column(Text, default="ingesting") # "ingesting", "ready", "failed"
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class ChatSession(Base):
+    __tablename__ = 'chat_sessions'
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_name = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
 class QueryLog(Base):
     __tablename__ = 'query_logs'
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), nullable=True) # Soft link to chat_sessions
     question = Column(Text, nullable=False)
     retrieved_chunk_ids = Column(JSONB)
     answer = Column(Text)
     retrieval_method = Column(Enum(RetrievalMethod), nullable=False)
+    tokens_used = Column(Integer, default=0) # Cost tracking
     created_at = Column(DateTime(timezone=True), server_default=func.now())
