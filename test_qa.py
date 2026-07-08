@@ -14,6 +14,15 @@ def run_interactive_qa():
     print("Type 'exit' to quit.")
     
     try:
+        from src.db.models import DocumentChunk
+        latest_chunk = db.query(DocumentChunk).order_by(DocumentChunk.created_at.desc()).first()
+        if not latest_chunk:
+            print("No documents found in database. Run the pipeline first.")
+            return
+        document_id = str(latest_chunk.document_id)
+        
+        print(f"[INFO] Running search strictly against Document ID: {document_id}")
+        
         while True:
             query = input("\n👤 YOU: ")
             if query.lower() in ['exit', 'quit']:
@@ -22,7 +31,7 @@ def run_interactive_qa():
             print("\n🤖 AI is thinking... (Retrieving chunks & generating answer)\n")
             
             try:
-                answer = generate_answer(query, db)
+                answer = generate_answer(query, document_id, db)
                 print(f"🤖 BOT:\n{answer}")
                 print("\n" + "-" * 50)
             except Exception as e:

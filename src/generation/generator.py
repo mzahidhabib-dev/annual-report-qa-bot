@@ -1,14 +1,15 @@
 from sqlalchemy.orm import Session
-from src.retrieval.searcher import search_with_self_query, get_genai_client
+from src.retrieval.hybrid_search import search_with_self_query
+from src.retrieval.self_query import get_genai_client
 from src.db.models import QueryLog, RetrievalMethod
 
-def generate_answer(query: str, db_session: Session) -> str:
+def generate_answer(query: str, document_id: str, db_session: Session) -> str:
     """
     Retrieves relevant chunks using hybrid search, passes them to Gemini,
     and returns a conversational answer. Logs the transaction to the database.
     """
     # 1. Retrieve the top 5 chunks using self_query (Phase 5)
-    chunks = search_with_self_query(query, db_session, top_k=5)
+    chunks = search_with_self_query(query, document_id, top_k=5)
     
     if not chunks:
         return "I could not find any relevant information in the annual report to answer your question."

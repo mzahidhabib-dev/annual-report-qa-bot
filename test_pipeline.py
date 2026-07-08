@@ -2,103 +2,27 @@ import os
 import uuid
 import time
 from dotenv import load_dotenv
-from google import genai
-from src.db.database import SessionLocal
-from src.db.models import DocumentChunk, ExtractedTable
-from src.ingestion.text_extractor import extract_text_by_page
-from src.embeddings.chunker import chunk_text
-from src.embeddings.embedder import embed_and_save_chunks
-from src.ingestion.table_extractor import extract_tables_from_pdf
-from src.embeddings.table_summarizer import summarize_tables
+from src.ingestion.pipeline import ingest_text, ingest_tables, ingest_images
 
 load_dotenv()
 
 def run_pipeline():
     pdf_path = os.path.join("sample_docs", "Northbridge_Dynamics_2025_Annual_Report.pdf")
     document_id = str(uuid.uuid4())
-    api_key = os.environ.get("GEMINI_API_KEY")
-    client = genai.Client(api_key=api_key)
     
     print(f"==========================================")
-    print(f"PHASE 1: TEXT INGESTION")
+    print(f"PHASE 1-3: FULL INGESTION PIPELINE")
     print(f"==========================================")
     print(f"Assigned Document ID: {document_id}\n")
     
-    pages = extract_text_by_page(pdf_path)
-    print(f"[SUCCESS] Extracted {len(pages)} pages of text.")
+    print("\n[1] Starting Text Ingestion...")
+    ingest_text(pdf_path, document_id)
     
-    chunks = chunk_text(pages, chunk_size=800, overlap=150)
-    print(f"[SUCCESS] Generated {len(chunks)} text chunks.")
+    print("\n[2] Starting Table Ingestion...")
+    ingest_tables(pdf_path, document_id)
     
-    print(f"[INFO] Embedding {len(chunks)} text chunks. This will take ~{len(chunks) * 4} seconds...")
-    db_session = SessionLocal()
-    try:
-        saved_chunks = embed_and_save_chunks(chunks, document_id, db_session)
-        print(f"[SUCCESS] Saved {saved_chunks} text chunks to 'document_chunks'.")
-    except Exception as e:
-        print(f"[ERROR] Failed to save text chunks: {e}")
-        db_session.rollback()
-        db_session.close()
-        return
-
-    print(f"\n==========================================")
-    print(f"PHASE 2: TABLE INGESTION")
-    print(f"==========================================")
-    
-    tables = extract_tables_from_pdf(pdf_path)
-    print(f"[SUCCESS] Extracted {len(tables)} tables.")
-    
-    # We summarize all tables in the real pipeline
-    summarized_tables = summarize_tables(tables, client)
-    
-    print(f"[INFO] Embedding {len(summarized_tables)} table summaries. This will take ~{len(summarized_tables) * 4} seconds...")
-    
-    try:
-        saved_table_count = 0
-        for i, table_dict in enumerate(summarized_tables, 1):
-            summary_text = table_dict["summary"]
-            markdown_table = table_dict["markdown_table"]
-            page_num = table_dict["page_number"]
-            
-            # Save the raw table
-            db_table = ExtractedTable(
-                document_id=document_id,
-                table_summary=summary_text,
-                table_data={"markdown": markdown_table},
-                page_number=page_num
-            )
-            db_session.add(db_table)
-            
-            # Embed the summary
-            result = client.models.embed_content(
-                model="gemini-embedding-2",
-                contents=summary_text,
-                config={"task_type": "RETRIEVAL_DOCUMENT", "output_dimensionality": 768}
-            )
-            embedding_vector = result.embeddings[0].values
-            
-            # Add the summary to the chunk database
-            db_chunk = DocumentChunk(
-                document_id=document_id,
-                content=summary_text,
-                chunk_type="table",
-                page_number=page_num,
-                embedding=embedding_vector
-            )
-            db_session.add(db_chunk)
-            saved_table_count += 1
-            print(f"Embedded table {i}/{len(summarized_tables)}")
-            
-            if i < len(summarized_tables):
-                time.sleep(4.0)
-                
-        db_session.commit()
-        print(f"[SUCCESS] Saved and embedded {saved_table_count} tables!")
-    except Exception as e:
-        print(f"[ERROR] Failed to save tables: {e}")
-        db_session.rollback()
-    finally:
-        db_session.close()
+    print("\n[3] Starting Image Ingestion...")
+    ingest_images(pdf_path, document_id)
         
     print(f"\n==========================================")
     print(f"PIPELINE COMPLETE!")
