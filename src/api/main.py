@@ -7,10 +7,13 @@ from sqlalchemy import func
 from pydantic import BaseModel
 
 from src.db.database import SessionLocal
-from src.db.models import Document, ChatSession, DocumentChunk
+from src.db.models import Document, ChatSession, DocumentChunk, ExtractedTable, ExtractedImage
 from src.ingestion.pipeline import ingest_text, ingest_tables, ingest_images
 from src.retrieval.hybrid_search import search_with_self_query
 from src.retrieval.answer_generator import generate_answer
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 app = FastAPI(title="Annual Report QA Bot API")
 
@@ -78,10 +81,14 @@ async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = 
     }
 
 @app.get("/documents", dependencies=[Depends(verify_api_key)])
-def list_documents(db: Session = Depends(get_db)):
-    """Blueprint req: List available documents for the frontend."""
-    docs = db.query(Document).order_by(Document.created_at.desc()).all()
-    return [{"id": str(d.id), "filename": d.filename, "status": d.status} for d in docs]
+def list_documents(skip: int = 0, limit: int = 5, db: Session = Depends(get_db)):
+    """Blueprint req: List available documents for the frontend with pagination."""
+    docs = db.query(Document).order_by(Document.created_at.desc()).offset(skip).limit(limit).all()
+    total = db.query(Document).count()
+    return {
+        "documents": [{"id": str(d.id), "filename": d.filename, "status": d.status} for d in docs],
+        "total": total
+    }
 
 @app.get("/documents/{document_id}/status", dependencies=[Depends(verify_api_key)])
 def get_status(document_id: str, db: Session = Depends(get_db)):
@@ -128,10 +135,14 @@ def ask_question(document_id: str, req: AskRequest, db: Session = Depends(get_db
         raise HTTPException(status_code=500, detail=f"Failed to generate answer: {str(e)}")
 
 @app.get("/sessions", dependencies=[Depends(verify_api_key)])
-def list_sessions(db: Session = Depends(get_db)):
-    """Blueprint req: Sidebar displays 5 most recent sessions."""
-    sessions = db.query(ChatSession).order_by(ChatSession.created_at.desc()).limit(5).all()
-    return [{"id": str(s.id), "name": s.session_name, "created_at": s.created_at} for s in sessions]
+def list_sessions(skip: int = 0, limit: int = 5, db: Session = Depends(get_db)):
+    """Blueprint req: Sidebar displays 5 most recent sessions with pagination."""
+    sessions = db.query(ChatSession).order_by(ChatSession.created_at.desc()).offset(skip).limit(limit).all()
+    total = db.query(ChatSession).count()
+    return {
+        "sessions": [{"id": str(s.id), "name": s.session_name, "created_at": s.created_at} for s in sessions],
+        "total": total
+    }
 
 @app.get("/sessions/{session_id}/messages", dependencies=[Depends(verify_api_key)])
 def get_session_messages(session_id: str, db: Session = Depends(get_db)):
@@ -166,3 +177,39 @@ def get_analytics(db: Session = Depends(get_db)):
         "total_chunks": total_chunks,
         "total_tokens_used": total_tokens_used
     }
+
+@app.delete("/documents/{document_id}", dependencies=[Depends(verify_api_key)])
+def delete_document(document_id: str, db: Session = Depends(get_db)):
+    """Deletes a document and all its associated extraction data."""
+    try:
+        logger.info(f"Initiating deletion for document_id: {document_id}")
+        doc = db.query(Document).filter(Document.id == document_id).first()
+        if not doc:
+            logger.warning(f"Deletion failed: Document {document_id} not found.")
+            raise HTTPException(status_code=404, detail="Document not found")
+            
+        # Delete associated data manually since we don't have cascade="all, delete" on foreign keys
+        chunks_deleted = db.query(DocumentChunk).filter(DocumentChunk.document_id == document_id).delete()
+        tables_deleted = db.query(ExtractedTable).filter(ExtractedTable.document_id == document_id).delete()
+        images_deleted = db.query(ExtractedImage).filter(ExtractedImage.document_id == document_id).delete()
+        
+        logger.info(f"Deleted associated data for {document_id}: {chunks_deleted} chunks, {tables_deleted} tables, {images_deleted} images.")
+        
+        # Delete the document itself
+        db.delete(doc)
+        db.commit()
+        logger.info(f"Successfully deleted Document record for {document_id} from database.")
+        
+        # Delete the physical file
+        file_path = os.path.join("temp_pdfs", doc.filename)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            logger.info(f"Successfully deleted physical file: {file_path}")
+        else:
+            logger.info(f"Physical file not found (already deleted or missing): {file_path}")
+            
+        return {"status": "success", "message": "Document deleted"}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to delete document {document_id}. Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")
