@@ -26,7 +26,7 @@ def summarize_tables(tables: list[dict], client: genai.Client) -> list[dict]:
         prompt = prompt_template.format(table=markdown_table)
         
         try:
-            # We use gemini-2.5-flash as it is extremely fast and accurate for text summarization
+            # We use gemini-2.5-flash to bypass the hard 0 limit
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
                 contents=prompt,

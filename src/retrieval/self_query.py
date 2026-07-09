@@ -1,6 +1,8 @@
 import os
 import json
 from google import genai
+from src.utils.logger import get_logger
+from src.utils.retry import retry_with_backoff
 
 # Cache client
 _client = None
@@ -10,6 +12,7 @@ def get_genai_client():
         _client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
     return _client
 
+@retry_with_backoff(retries=5, initial_backoff=30)
 def rewrite_query(user_question: str) -> dict:
     """
     Rewrites user questions into better search queries and extracts preferred chunk types.

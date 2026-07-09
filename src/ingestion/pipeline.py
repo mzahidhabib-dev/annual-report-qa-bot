@@ -10,6 +10,7 @@ from src.embeddings.chunker import chunk_text
 from src.embeddings.embedder import embed_text
 from src.ingestion.table_extractor import extract_all_tables
 from src.utils.logger import get_logger
+from src.utils.retry import retry_with_backoff
 
 load_dotenv()
 logger = get_logger(__name__)
@@ -68,6 +69,7 @@ def ingest_text(pdf_path: str, document_id: str):
     finally:
         db_session.close()
 
+@retry_with_backoff(retries=5, initial_backoff=30)
 def summarize_table(rows: list[list[str]]) -> str:
     """Uses Gemini to summarize raw table rows into plain text."""
     client = get_genai_client()
@@ -94,7 +96,7 @@ def summarize_table(rows: list[list[str]]) -> str:
     )
     
     response = client.models.generate_content(
-        model='gemini-1.5-flash',
+        model='gemini-2.5-flash',
         contents=prompt
     )
     return response.text.strip()

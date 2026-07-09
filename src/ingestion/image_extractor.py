@@ -3,6 +3,7 @@ import time
 import pdfplumber
 from PIL import Image
 from google import genai
+from src.utils.retry import retry_with_backoff
 
 def extract_images(pdf_path: str, output_dir: str) -> list[dict]:
     """
@@ -36,6 +37,7 @@ def get_genai_client():
         _client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
     return _client
 
+@retry_with_backoff(retries=5, initial_backoff=30)
 def describe_image(image_path: str) -> str:
     """
     Uses Gemini Vision to describe charts, graphs, or diagrams on the page.
@@ -58,7 +60,7 @@ def describe_image(image_path: str) -> str:
     
     for attempt in range(2):
         try:
-            # Using gemini-2.5-flash as it is the current standard for vision + text
+            # Using gemini-2.5-flash to bypass the hard 0 limit
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
                 contents=[prompt, image]

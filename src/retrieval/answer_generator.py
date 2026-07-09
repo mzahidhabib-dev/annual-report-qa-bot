@@ -3,7 +3,9 @@ from sqlalchemy.orm import Session
 from src.retrieval.hybrid_search import search_with_self_query
 from src.retrieval.self_query import get_genai_client
 from src.db.models import QueryLog, RetrievalMethod
+from src.utils.retry import retry_with_backoff
 
+@retry_with_backoff(retries=5, initial_backoff=30)
 def generate_answer(question: str, retrieved_chunks: list[dict], session_id: str, db_session: Session) -> dict:
     """
     Generates an answer using the provided context, extracts native token costs,
@@ -29,7 +31,7 @@ def generate_answer(question: str, retrieved_chunks: list[dict], session_id: str
     
     # 2. Call Gemini
     response = client.models.generate_content(
-        model='gemini-1.5-flash',
+        model='gemini-2.5-flash',
         contents=prompt
     )
     
@@ -40,17 +42,15 @@ def generate_answer(question: str, retrieved_chunks: list[dict], session_id: str
     sources = list(set([chunk["page_number"] for chunk in retrieved_chunks]))
     
     # 4. Save to QueryLog with token tracking
-    chunk_ids = [chunk["chunk_id"] for chunk in retrieved_chunks]
-    
-    log_entry = QueryLog(
+    log = QueryLog(
         session_id=session_id if session_id else None,
         question=question,
-        retrieved_chunk_ids=chunk_ids,
+        retrieved_chunk_ids=[str(chunk["chunk_id"]) for chunk in retrieved_chunks],
         answer=answer_text,
         retrieval_method=RetrievalMethod.hybrid,
         tokens_used=tokens_used
     )
-    db_session.add(log_entry)
+    db_session.add(log)
     db_session.commit()
     
     # 5. Return structured dictionary
