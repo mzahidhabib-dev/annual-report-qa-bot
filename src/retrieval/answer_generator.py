@@ -31,7 +31,7 @@ def generate_answer(question: str, retrieved_chunks: list[dict], session_id: str
     
     # 2. Call Gemini
     response = client.models.generate_content(
-        model='gemini-2.0-flash',
+        model='gemini-flash-lite-latest',
         contents=prompt
     )
     

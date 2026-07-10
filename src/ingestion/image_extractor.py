@@ -61,7 +61,7 @@ def describe_image(image_path: str) -> str:
     for attempt in range(2):
         try:
             response = client.models.generate_content(
-                model='gemini-2.0-flash',
+                model='gemini-flash-lite-latest',
                 contents=[prompt, image]
             )
             return response.text.strip()

@@ -27,7 +27,7 @@ def summarize_tables(tables: list[dict], client: genai.Client) -> list[dict]:
         
         try:
             response = client.models.generate_content(
-                model='gemini-2.0-flash',
+                model='gemini-flash-lite-latest',
                 contents=prompt,
             )
             
