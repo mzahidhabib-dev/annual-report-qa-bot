@@ -60,9 +60,8 @@ def describe_image(image_path: str) -> str:
     
     for attempt in range(2):
         try:
-            # Using gemini-2.5-flash to bypass the hard 0 limit
             response = client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-2.0-flash',
                 contents=[prompt, image]
             )
             return response.text.strip()

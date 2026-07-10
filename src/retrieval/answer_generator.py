@@ -2,11 +2,11 @@ import json
 from sqlalchemy.orm import Session
 from src.retrieval.hybrid_search import search_with_self_query
 from src.retrieval.self_query import get_genai_client
-from src.db.models import QueryLog, RetrievalMethod
+from src.db.models import QueryLog, RetrievalMethod, Document
 from src.utils.retry import retry_with_backoff
 
 @retry_with_backoff(retries=5, initial_backoff=30)
-def generate_answer(question: str, retrieved_chunks: list[dict], session_id: str, db_session: Session) -> dict:
+def generate_answer(question: str, retrieved_chunks: list[dict], session_id: str, document_id: str, db_session: Session) -> dict:
     """
     Generates an answer using the provided context, extracts native token costs,
     and returns structured JSON with specific page citations.
@@ -31,15 +31,22 @@ def generate_answer(question: str, retrieved_chunks: list[dict], session_id: str
     
     # 2. Call Gemini
     response = client.models.generate_content(
-        model='gemini-2.5-flash',
+        model='gemini-2.0-flash',
         contents=prompt
     )
     
     answer_text = response.text.strip()
     tokens_used = response.usage_metadata.total_token_count if response.usage_metadata else 0
     
-    # 3. Extract unique page numbers as sources
-    sources = list(set([chunk["page_number"] for chunk in retrieved_chunks]))
+    # 3. Extract unique page numbers as sources and get filename
+    pages = list(set([chunk["page_number"] for chunk in retrieved_chunks]))
+    filename = None
+    if document_id:
+        doc = db_session.query(Document).filter(Document.id == document_id).first()
+        if doc:
+            filename = doc.filename
+
+    sources = [{"page": p, "filename": filename} for p in pages]
     
     # 4. Save to QueryLog with token tracking
     log = QueryLog(

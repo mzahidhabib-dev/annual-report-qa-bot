@@ -1,7 +1,8 @@
 import os
 import uuid
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Header
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
@@ -24,6 +25,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount the temp_pdfs directory to allow browser access to raw PDFs
+app.mount("/files", StaticFiles(directory="temp_pdfs"), name="files")
 
 API_KEY = os.environ.get("API_KEY", "dev-secret-key")
 
@@ -127,7 +131,7 @@ def ask_question(document_id: str, req: AskRequest, db: Session = Depends(get_db
                 "tokens_used": 0
             }
             
-        result = generate_answer(req.question, retrieved_chunks, session_id, db)
+        result = generate_answer(req.question, retrieved_chunks, session_id, document_id, db)
         result["session_id"] = session_id
         return result
     except Exception as e:
@@ -170,12 +174,13 @@ def get_analytics(db: Session = Depends(get_db)):
     """Blueprint req: Admin analytics for total tokens and chunks."""
     from src.db.models import QueryLog
     total_docs = db.query(Document).count()
-    total_chunks = db.query(DocumentChunk).count()
+    total_sessions = db.query(ChatSession).count()
     total_tokens_used = db.query(func.sum(QueryLog.tokens_used)).scalar() or 0
+    estimated_cost = (total_tokens_used / 1_000_000) * 0.15
     return {
         "total_documents": total_docs,
-        "total_chunks": total_chunks,
-        "total_tokens_used": total_tokens_used
+        "total_sessions": total_sessions,
+        "estimated_cost": estimated_cost
     }
 
 @app.delete("/documents/{document_id}", dependencies=[Depends(verify_api_key)])
