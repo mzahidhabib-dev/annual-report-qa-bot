@@ -74,4 +74,5 @@ class QueryLog(Base):
     answer = Column(Text)
     retrieval_method = Column(Enum(RetrievalMethod), nullable=False)
     tokens_used = Column(Integer, default=0) # Cost tracking
+    confidence_score = Column(Integer, nullable=True) # Accuracy score from 0-100
     created_at = Column(DateTime(timezone=True), server_default=func.now())

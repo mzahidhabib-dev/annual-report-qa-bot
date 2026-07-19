@@ -177,10 +177,13 @@ def get_analytics(db: Session = Depends(get_db)):
     total_sessions = db.query(ChatSession).count()
     total_tokens_used = db.query(func.sum(QueryLog.tokens_used)).scalar() or 0
     estimated_cost = (total_tokens_used / 1_000_000) * 0.15
+    avg_confidence = db.query(func.avg(QueryLog.confidence_score)).scalar()
+    
     return {
         "total_documents": total_docs,
         "total_sessions": total_sessions,
-        "estimated_cost": estimated_cost
+        "estimated_cost": estimated_cost,
+        "average_confidence": round(float(avg_confidence), 1) if avg_confidence is not None else 0.0
     }
 
 @app.delete("/documents/{document_id}", dependencies=[Depends(verify_api_key)])
